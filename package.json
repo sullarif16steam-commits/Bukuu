@@ -1,0 +1,11 @@
+{
+  "name": "dashboard-keuangan-pribadi",
+  "version": "1.0.0",
+  "description": "Dashboard Keuangan Pribadi - Pantau arus kas Anda dengan mudah",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "keywords": ["keuangan", "dashboard", "personal-finance"],
+  "author": "",
+  "license": "MIT"
+}
