@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Keuangan Pribadi</title>
+    <meta name="description"
+        content="Dashboard keuangan pribadi untuk memantau pemasukan dan pengeluaran secara real-time.">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS untuk Export Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         Firebase SDK (v9 Compat — bisa langsung dipakai di HTML)
+         ════════════════════════════════════════════════════════════ -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        /* Monthly summary card animations */
+        .month-card {
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .month-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        /* Progress bar fill animation */
+        .bar-fill {
+            transition: width 0.6s cubic-bezier(.4, 0, .2, 1);
+        }
+
+        /* Dropdown date styling */
+        .date-select {
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 16px;
+            padding-right: 28px;
+            cursor: pointer;
+        }
+
+        .date-select:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px #3b82f6;
+        }
+
+        /* Loading overlay */
+        #loading-overlay {
+            transition: opacity 0.3s ease;
+        }
+
+        /* Cloud sync indicator pulse */
+        @keyframes syncPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .syncing {
+            animation: syncPulse 1s ease infinite;
+        }
+    </style>
+</head>
+
+<body class="text-gray-800">
+
+    <!-- ════ LOADING OVERLAY ════ -->
+    <div id="loading-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
+        <div class="flex flex-col items-center gap-4">
+            <svg class="animate-spin h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <p class="text-gray-500 text-sm font-medium">Menghubungkan ke server...</p>
+        </div>
+    </div>
+
+    <!-- ════ FIREBASE CONFIG MISSING BANNER ════ -->
+    <div id="config-banner"
+        class="hidden fixed top-0 left-0 right-0 z-40 bg-amber-500 text-white text-sm font-semibold text-center py-3 px-4 shadow-lg">
+        ⚠️ Firebase belum dikonfigurasi! Buka <code class="bg-amber-600 px-1 rounded">index.html</code> dan isi
+        <code class="bg-amber-600 px-1 rounded">firebaseConfig</code> dengan config dari Firebase Console.
+    </div>
+
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+
+        <!-- Header -->
+        <header class="mb-8 flex items-start justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Dashboard Keuangan</h1>
+                <p class="text-gray-500 mt-1">Pantau arus kas Anda dengan mudah</p>
+            </div>
+            <!-- Cloud sync status -->
+            <div id="sync-status"
+                class="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 text-xs font-semibold px-3 py-2 rounded-full mt-1">
+                <span id="sync-icon" class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                <span id="sync-text">Terhubung</span>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 text-center">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">Total Saldo</h3>
+                <p id="balance" class="text-3xl font-bold text-gray-900 mt-2">Rp 0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 text-center">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">Pemasukan</h3>
+                <p id="money-plus" class="text-2xl font-bold text-green-500 mt-2">Rp 0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 text-center">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">Pengeluaran</h3>
+                <p id="money-minus" class="text-2xl font-bold text-red-500 mt-2">Rp 0</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Kolom Kiri: Form -->
+            <div class="lg:col-span-1 bg-white rounded-xl shadow-sm p-6 border border-gray-100 h-fit">
+                <h3 class="text-lg font-semibold border-b pb-3 mb-4">Tambah Transaksi</h3>
+                <form id="form">
+                    <div class="mb-4">
+                        <label for="text" class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
+                        <input type="text" id="text" placeholder="Gaji, Makan, Beli Baju..."
+                            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Jenis</label>
+                        <select id="type"
+                            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="income">Pemasukan</option>
+                            <option value="expense">Pengeluaran</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="amount" class="block text-sm font-medium text-gray-700 mb-1">Jumlah (Rp)</label>
+                        <input type="text" id="amount" placeholder="Contoh: 50.000" inputmode="numeric"
+                            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <!-- Field Tanggal (3 Dropdown) -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal Transaksi</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="flex flex-col">
+                                <span class="text-xs text-gray-400 mb-1">Hari</span>
+                                <select id="trans-day"
+                                    class="date-select w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-700 text-sm bg-white"></select>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-gray-400 mb-1">Bulan</span>
+                                <select id="trans-month"
+                                    class="date-select w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-700 text-sm bg-white">
+                                    <option value="01">Januari</option>
+                                    <option value="02">Februari</option>
+                                    <option value="03">Maret</option>
+                                    <option value="04">April</option>
+                                    <option value="05">Mei</option>
+                                    <option value="06">Juni</option>
+                                    <option value="07">Juli</option>
+                                    <option value="08">Agustus</option>
+                                    <option value="09">September</option>
+                                    <option value="10">Oktober</option>
+                                    <option value="11">November</option>
+                                    <option value="12">Desember</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-gray-400 mb-1">Tahun</span>
+                                <select id="trans-year"
+                                    class="date-select w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-700 text-sm bg-white"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="submit-btn"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2">
+                        <span id="submit-label">Tambah Catatan</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Kolom Kanan: Ringkasan Bulanan dan Riwayat -->
+            <div class="lg:col-span-2 flex flex-col gap-8">
+
+                <!-- Ringkasan Per Bulan -->
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <div class="flex items-center justify-between border-b pb-3 mb-5">
+                        <h3 class="text-lg font-semibold">Ringkasan Per Bulan</h3>
+                        <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Berdasarkan tanggal
+                            transaksi</span>
+                    </div>
+                    <div id="monthly-summary" class="flex flex-col gap-4">
+                        <!-- Akan diisi oleh JS -->
+                    </div>
+                    <div id="monthly-empty" class="text-center py-8 text-gray-400 hidden">
+                        Belum ada data transaksi untuk ditampilkan.
+                    </div>
+                </div>
+
+                <!-- Riwayat Transaksi -->
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <div class="flex justify-between items-center border-b pb-3 mb-4">
+                        <h3 class="text-lg font-semibold">Riwayat Transaksi</h3>
+                        <div class="flex items-center gap-2">
+                            <button id="btn-clear-all" onclick="openClearModal()"
+                                class="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-500 text-sm font-semibold py-2 px-3 rounded-lg transition duration-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                Hapus Semua
+                            </button>
+                            <button id="btn-ganti-file" onclick="gantiFile()"
+                                class="hidden text-xs text-gray-400 hover:text-gray-600 underline transition">Ganti
+                                File</button>
+                            <button id="btn-save-excel" onclick="saveExcel()"
+                                class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition duration-200 shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                                </svg>
+                                <span id="btn-save-label">Simpan ke Excel</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-gray-400 text-sm uppercase border-b">
+                                    <th class="pb-3 font-medium">Tanggal</th>
+                                    <th class="pb-3 font-medium">Keterangan</th>
+                                    <th class="pb-3 font-medium">Jumlah</th>
+                                    <th class="pb-3 font-medium text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="list" class="divide-y divide-gray-100">
+                                <!-- List transaksi akan di-generate oleh JS -->
+                            </tbody>
+                        </table>
+                        <div id="empty-state" class="text-center py-8 text-gray-400 hidden">
+                            Belum ada transaksi.
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FIREBASE CONFIGURATION
+         ════════════════════════════════════════════════════════════
+         LANGKAH:
+         1. Buka https://console.firebase.google.com
+         2. Pilih project kamu → Project Settings → General
+         3. Scroll ke bawah → copy bagian firebaseConfig
+         4. Paste di bawah ini, ganti nilai-nilai yang ada
+         ════════════════════════════════════════════════════════════ -->
+    <script>
+        // *** PASTE FIREBASE CONFIG KAMU DI SINI ***
+        const firebaseConfig = {
+            apiKey: "AIzaSyD_JUc2JQCt1NV4HEDvWxTQ0JsvsDD4TWw",
+            authDomain: "testing-be520.firebaseapp.com",
+            projectId: "testing-be520",
+            storageBucket: "testing-be520.firebasestorage.app",
+            messagingSenderId: "1:254941855476:web:a649fdbf1d14fab38c68a1",
+            appId: "G-MBJ8GH0JLC"
+        };
+
+        // ─── Cek apakah config sudah diisi ───────────────────────
+        const isConfigured = !Object.values(firebaseConfig).some(v => v.startsWith('PASTE_'));
+
+        if (!isConfigured) {
+            document.getElementById('config-banner').classList.remove('hidden');
+            document.getElementById('loading-overlay').classList.add('hidden');
+        } else {
+            firebase.initializeApp(firebaseConfig);
+        }
+
+        const db = isConfigured ? firebase.firestore() : null;
+        const COLLECTION = 'transactions';
+
+        // ─── DOM Elements ─────────────────────────────────────────
+        const balance = document.getElementById('balance');
+        const money_plus = document.getElementById('money-plus');
+        const money_minus = document.getElementById('money-minus');
+        const list = document.getElementById('list');
+        const form = document.getElementById('form');
+        const text = document.getElementById('text');
+        const amount = document.getElementById('amount');
+        const type = document.getElementById('type');
+        const transDay = document.getElementById('trans-day');
+        const transMonth = document.getElementById('trans-month');
+        const transYear = document.getElementById('trans-year');
+        const emptyState = document.getElementById('empty-state');
+        const monthlySummary = document.getElementById('monthly-summary');
+        const monthlyEmpty = document.getElementById('monthly-empty');
+        const syncIcon = document.getElementById('sync-icon');
+        const syncText = document.getElementById('sync-text');
+        const syncStatus = document.getElementById('sync-status');
+        const submitBtn = document.getElementById('submit-btn');
+        const submitLabel = document.getElementById('submit-label');
+
+        // ─── In-memory cache (diisi dari Firestore listener) ──────
+        let transactions = [];
+
+        // ─── Isi dropdown Hari (1-31) ─────────────────────────────
+        for (let d = 1; d <= 31; d++) {
+            const opt = document.createElement('option');
+            opt.value = String(d).padStart(2, '0');
+            opt.textContent = d;
+            transDay.appendChild(opt);
+        }
+
+        // ─── Isi dropdown Tahun ───────────────────────────────────
+        const currentYear = new Date().getFullYear();
+        for (let y = currentYear; y >= currentYear - 5; y--) {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            transYear.appendChild(opt);
+        }
+
+        // ─── Set default ke hari ini ──────────────────────────────
+        const today = new Date();
+        transDay.value = String(today.getDate()).padStart(2, '0');
+        transMonth.value = String(today.getMonth() + 1).padStart(2, '0');
+        transYear.value = today.getFullYear();
+
+        function getSelectedDate() {
+            return `${transYear.value}-${transMonth.value}-${transDay.value}`;
+        }
+
+        function resetDateToToday() {
+            transDay.value = String(today.getDate()).padStart(2, '0');
+            transMonth.value = String(today.getMonth() + 1).padStart(2, '0');
+            transYear.value = today.getFullYear();
+        }
+
+        // ─── Helpers ──────────────────────────────────────────────
+        const formatRupiah = (number) => new Intl.NumberFormat('id-ID', {
+            style: 'currency', currency: 'IDR', minimumFractionDigits: 0
+        }).format(number);
+
+        const formatTanggal = (dateStr) => {
+            if (!dateStr) return '-';
+            const [year, month, day] = dateStr.split('-');
+            const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+            return `${parseInt(day)} ${bulan[parseInt(month) - 1]} ${year}`;
+        };
+
+        const formatBulanTahun = (yearMonth) => {
+            const [year, month] = yearMonth.split('-');
+            const namaBulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            return `${namaBulan[parseInt(month) - 1]} ${year}`;
+        };
+
+        // ─── Auto-format input amount ─────────────────────────────
+        amount.addEventListener('input', function () {
+            let raw = this.value.replace(/\D/g, '');
+            this.value = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+        });
+
+        function getRawAmount() {
+            return parseInt(amount.value.replace(/\./g, ''), 10);
+        }
+
+        // ─── Sync Status UI ───────────────────────────────────────
+        function setSyncing(on) {
+            if (on) {
+                syncIcon.classList.add('syncing', 'bg-amber-400');
+                syncIcon.classList.remove('bg-green-500');
+                syncText.textContent = 'Menyimpan...';
+                syncStatus.classList.remove('bg-green-50', 'border-green-200', 'text-green-700');
+                syncStatus.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-700');
+            } else {
+                syncIcon.classList.remove('syncing', 'bg-amber-400');
+                syncIcon.classList.add('bg-green-500');
+                syncText.textContent = 'Terhubung';
+                syncStatus.classList.add('bg-green-50', 'border-green-200', 'text-green-700');
+                syncStatus.classList.remove('bg-amber-50', 'border-amber-200', 'text-amber-700');
+            }
+        }
+
+        function setSubmitting(on) {
+            submitBtn.disabled = on;
+            submitLabel.textContent = on ? 'Menyimpan...' : 'Tambah Catatan';
+            submitBtn.classList.toggle('opacity-60', on);
+            submitBtn.classList.toggle('cursor-not-allowed', on);
+        }
+
+        // ─── Firestore: Add transaction ───────────────────────────
+        async function addTransaction(e) {
+            e.preventDefault();
+            if (!db) { showToast('Firebase belum dikonfigurasi!', 'error'); return; }
+
+            const rawAmount = getRawAmount();
+            if (text.value.trim() === '' || !rawAmount || rawAmount <= 0) {
+                alert('Mohon isi keterangan dan jumlah uang!');
+                return;
+            }
+
+            const amountValue = type.value === 'expense' ? -Math.abs(rawAmount) : Math.abs(rawAmount);
+            const transaction = {
+                id: generateID(),
+                text: text.value.trim(),
+                amount: amountValue,
+                type: type.value,
+                date: getSelectedDate(),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            setSubmitting(true);
+            setSyncing(true);
+            try {
+                await db.collection(COLLECTION).add(transaction);
+                text.value = '';
+                amount.value = '';
+                resetDateToToday();
+                showToast('Transaksi berhasil ditambahkan!');
+            } catch (err) {
+                console.error(err);
+                showToast('Gagal menyimpan transaksi.', 'error');
+            } finally {
+                setSubmitting(false);
+                setSyncing(false);
+            }
+        }
+
+        // ─── Firestore: Remove single transaction ─────────────────
+        async function removeTransaction(docId) {
+            if (!db) return;
+            setSyncing(true);
+            try {
+                await db.collection(COLLECTION).doc(docId).delete();
+                showToast('Transaksi dihapus.');
+            } catch (err) {
+                showToast('Gagal menghapus transaksi.', 'error');
+            } finally {
+                setSyncing(false);
+            }
+        }
+
+        // ─── Firestore: Clear all transactions ────────────────────
+        async function clearAllTransactions() {
+            if (!db) return;
+            closeClearModal();
+            setSyncing(true);
+            try {
+                const snapshot = await db.collection(COLLECTION).get();
+                const batch = db.batch();
+                snapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+                showToast('Semua transaksi berhasil dihapus!');
+            } catch (err) {
+                showToast('Gagal menghapus semua transaksi.', 'error');
+            } finally {
+                setSyncing(false);
+            }
+        }
+
+        function generateID() {
+            return Math.floor(Math.random() * 100000000);
+        }
+
+        // ─── Render: tambah satu baris ke tabel ───────────────────
+        function addTransactionDOM(transaction) {
+            const sign = transaction.amount < 0 ? '-' : '+';
+            const item = document.createElement('tr');
+            const textColorClass = transaction.amount < 0 ? 'text-red-500' : 'text-green-500';
+            const dateBadge = transaction.date
+                ? `<span class="text-xs text-gray-500">${formatTanggal(transaction.date)}</span>`
+                : `<span class="text-xs text-gray-400 italic">-</span>`;
+
+            item.innerHTML = `
+                <td class="py-3 pr-2">${dateBadge}</td>
+                <td class="py-3 font-medium">${transaction.text}</td>
+                <td class="py-3 font-semibold ${textColorClass}">${sign} ${formatRupiah(Math.abs(transaction.amount))}</td>
+                <td class="py-3 text-right">
+                    <button onclick="removeTransaction('${transaction._docId}')"
+                        class="text-red-400 hover:text-red-600 bg-red-50 px-2 py-1 rounded text-sm transition">
+                        Hapus
+                    </button>
+                </td>
+            `;
+            list.appendChild(item);
+        }
+
+        // ─── Render: monthly summary ──────────────────────────────
+        function updateMonthlySummary() {
+            const monthMap = {};
+            transactions.forEach(t => {
+                const dateKey = t.date ? t.date.substring(0, 7) : 'tanpa-tanggal';
+                if (!monthMap[dateKey]) monthMap[dateKey] = { income: 0, expense: 0 };
+                if (t.amount > 0) monthMap[dateKey].income += t.amount;
+                else monthMap[dateKey].expense += Math.abs(t.amount);
+            });
+
+            const sortedKeys = Object.keys(monthMap).sort((a, b) => b.localeCompare(a));
+            monthlySummary.innerHTML = '';
+
+            if (sortedKeys.length === 0) {
+                monthlyEmpty.classList.remove('hidden');
+                return;
+            }
+            monthlyEmpty.classList.add('hidden');
+
+            const maxAmount = Math.max(...sortedKeys.map(k => Math.max(monthMap[k].income, monthMap[k].expense)), 1);
+
+            sortedKeys.forEach(key => {
+                const { income, expense } = monthMap[key];
+                const saldo = income - expense;
+                const saldoColor = saldo >= 0 ? 'text-green-600' : 'text-red-500';
+                const saldoSign = saldo >= 0 ? '+' : '';
+                const incomeWidth = Math.round((income / maxAmount) * 100);
+                const expenseWidth = Math.round((expense / maxAmount) * 100);
+                const label = key === 'tanpa-tanggal' ? 'Tanpa Tanggal' : formatBulanTahun(key);
+
+                const card = document.createElement('div');
+                card.className = 'month-card bg-gray-50 rounded-xl p-4 border border-gray-100';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="font-semibold text-gray-800 text-sm">${label}</span>
+                        <span class="text-sm font-bold ${saldoColor}">${saldoSign}${formatRupiah(saldo)}</span>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400 w-20 shrink-0">Masuk</span>
+                            <div class="flex-1 bg-green-100 rounded-full h-2 overflow-hidden">
+                                <div class="bar-fill bg-green-500 h-2 rounded-full" style="width: ${incomeWidth}%"></div>
+                            </div>
+                            <span class="text-xs font-medium text-green-600 w-28 text-right shrink-0">${formatRupiah(income)}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400 w-20 shrink-0">Keluar</span>
+                            <div class="flex-1 bg-red-100 rounded-full h-2 overflow-hidden">
+                                <div class="bar-fill bg-red-500 h-2 rounded-full" style="width: ${expenseWidth}%"></div>
+                            </div>
+                            <span class="text-xs font-medium text-red-500 w-28 text-right shrink-0">${formatRupiah(expense)}</span>
+                        </div>
+                    </div>
+                `;
+                monthlySummary.appendChild(card);
+            });
+        }
+
+        // ─── Render: summary cards & tabel ───────────────────────
+        function renderAll() {
+            list.innerHTML = '';
+
+            const sorted = [...transactions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            sorted.forEach(addTransactionDOM);
+
+            const amounts = transactions.map(t => t.amount);
+            const total = amounts.reduce((acc, v) => acc + v, 0);
+            const income = amounts.filter(v => v > 0).reduce((acc, v) => acc + v, 0);
+            const expense = amounts.filter(v => v < 0).reduce((acc, v) => acc + v, 0) * -1;
+
+            balance.innerText = formatRupiah(total);
+            money_plus.innerText = formatRupiah(income);
+            money_minus.innerText = formatRupiah(expense);
+
+            emptyState.classList.toggle('hidden', transactions.length > 0);
+            updateMonthlySummary();
+        }
+
+        // ─── Modal Hapus Semua ────────────────────────────────────
+        function openClearModal() {
+            if (transactions.length === 0) { showToast('Tidak ada transaksi untuk dihapus!', 'error'); return; }
+            document.getElementById('clear-modal').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('clear-modal-box').classList.remove('scale-95', 'opacity-0');
+                document.getElementById('clear-modal-box').classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function closeClearModal() {
+            document.getElementById('clear-modal-box').classList.remove('scale-100', 'opacity-100');
+            document.getElementById('clear-modal-box').classList.add('scale-95', 'opacity-0');
+            setTimeout(() => document.getElementById('clear-modal').classList.add('hidden'), 200);
+        }
+
+        // ─── Toast Notification ───────────────────────────────────
+        function showToast(msg, type = 'success') {
+            const toast = document.createElement('div');
+            const bg = type === 'success' ? 'bg-green-600' : 'bg-red-500';
+            toast.className = `fixed bottom-6 right-6 z-50 flex items-center gap-2 ${bg} text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg transition-all duration-300 opacity-0 translate-y-2`;
+            toast.innerHTML = type === 'success'
+                ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> ${msg}`
+                : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg> ${msg}`;
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; });
+            setTimeout(() => {
+                toast.style.opacity = '0'; toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ─── Excel Export ─────────────────────────────────────────
+        let excelFileHandle = null;
+
+        function buildWorkbook() {
+            const totalIncome = transactions.filter(t => t.amount > 0).reduce((a, t) => a + t.amount, 0);
+            const totalExpense = transactions.filter(t => t.amount < 0).reduce((a, t) => a + Math.abs(t.amount), 0);
+            const totalBalance = totalIncome - totalExpense;
+
+            const sheetData = [
+                ['Dashboard Keuangan Pribadi'],
+                ['Diperbarui pada:', new Date().toLocaleString('id-ID')],
+                [],
+                ['No', 'Tanggal', 'Keterangan', 'Jenis', 'Jumlah (Rp)'],
+                ...transactions.map((t, i) => [
+                    i + 1,
+                    t.date ? formatTanggal(t.date) : '-',
+                    t.text,
+                    t.amount >= 0 ? 'Pemasukan' : 'Pengeluaran',
+                    Math.abs(t.amount)
+                ]),
+                [],
+                ['', '', '', 'Total Pemasukan', totalIncome],
+                ['', '', '', 'Total Pengeluaran', totalExpense],
+                ['', '', '', 'Saldo Akhir', totalBalance],
+            ];
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(sheetData);
+            ws['!cols'] = [{ wch: 5 }, { wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 20 }];
+            XLSX.utils.book_append_sheet(wb, ws, 'Transaksi');
+            return wb;
+        }
+
+        async function saveExcel() {
+            if (transactions.length === 0) { showToast('Belum ada data transaksi!', 'error'); return; }
+            const wb = buildWorkbook();
+            if ('showSaveFilePicker' in window) {
+                try {
+                    if (!excelFileHandle) {
+                        excelFileHandle = await window.showSaveFilePicker({
+                            suggestedName: 'Keuangan.xlsx',
+                            types: [{ description: 'Excel Spreadsheet', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }]
+                        });
+                        document.getElementById('btn-save-label').textContent = '✓ ' + excelFileHandle.name;
+                        document.getElementById('btn-ganti-file').classList.remove('hidden');
+                    }
+                    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                    const writable = await excelFileHandle.createWritable();
+                    await writable.write(new Blob([wbout], { type: 'application/octet-stream' }));
+                    await writable.close();
+                    showToast('File Excel berhasil diperbarui!');
+                } catch (err) {
+                    if (err.name !== 'AbortError') showToast('Gagal menyimpan file.', 'error');
+                }
+            } else {
+                XLSX.writeFile(wb, 'Keuangan.xlsx');
+                showToast('File Excel berhasil diunduh!');
+            }
+        }
+
+        function gantiFile() {
+            excelFileHandle = null;
+            document.getElementById('btn-save-label').textContent = 'Simpan ke Excel';
+            document.getElementById('btn-ganti-file').classList.add('hidden');
+            saveExcel();
+        }
+
+        // ─── Firestore: Real-time listener ────────────────────────
+        // Ini adalah INTI dari "shared" — setiap perubahan di server
+        // langsung di-push ke semua browser yang sedang buka URL ini.
+        function startFirestoreListener() {
+            db.collection(COLLECTION)
+                .orderBy('date', 'desc')
+                .onSnapshot(
+                    snapshot => {
+                        transactions = snapshot.docs.map(doc => ({
+                            _docId: doc.id,
+                            ...doc.data()
+                        }));
+                        renderAll();
+
+                        // Sembunyikan loading overlay setelah data pertama masuk
+                        const overlay = document.getElementById('loading-overlay');
+                        if (overlay && !overlay.classList.contains('hidden')) {
+                            overlay.style.opacity = '0';
+                            setTimeout(() => overlay.classList.add('hidden'), 300);
+                        }
+                    },
+                    err => {
+                        console.error('Firestore error:', err);
+                        showToast('Koneksi ke server gagal. Cek console.', 'error');
+                        document.getElementById('loading-overlay').classList.add('hidden');
+                    }
+                );
+        }
+
+        // ─── Init ─────────────────────────────────────────────────
+        if (isConfigured) {
+            startFirestoreListener();
+        } else {
+            // Mode demo: tetap bisa dipakai tapi pakai localStorage
+            const saved = JSON.parse(localStorage.getItem('transactions') || '[]');
+            transactions = saved.map((t, i) => ({ ...t, _docId: String(i) }));
+            renderAll();
+            document.getElementById('loading-overlay').classList.add('hidden');
+
+            // Override fungsi agar localStorage tetap jalan di mode demo
+            window.removeTransaction = function (docId) {
+                const idx = transactions.findIndex(t => t._docId === docId);
+                if (idx !== -1) transactions.splice(idx, 1);
+                localStorage.setItem('transactions', JSON.stringify(transactions));
+                renderAll();
+            };
+        }
+
+        form.addEventListener('submit', addTransaction);
+    </script>
+
+    <!-- Modal Konfirmasi Hapus Semua -->
+    <div id="clear-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center"
+        onclick="if(event.target===this) closeClearModal()">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+        <!-- Box -->
+        <div id="clear-modal-box"
+            class="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 scale-95 opacity-0 transition-all duration-200">
+            <div class="flex flex-col items-center text-center">
+                <!-- Icon -->
+                <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </div>
+                <h2 class="text-xl font-bold text-gray-900 mb-2">Hapus Semua Transaksi?</h2>
+                <p class="text-gray-500 text-sm mb-6">Semua data riwayat transaksi akan dihapus permanen dan tidak bisa
+                    dikembalikan.</p>
+                <div class="flex gap-3 w-full">
+                    <button onclick="closeClearModal()"
+                        class="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold py-2.5 rounded-xl transition duration-200">Batal</button>
+                    <button onclick="clearAllTransactions()"
+                        class="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 rounded-xl transition duration-200">Ya,
+                        Hapus Semua</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
