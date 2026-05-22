@@ -284,14 +284,17 @@
          4. Paste di bawah ini, ganti nilai-nilai yang ada
          ════════════════════════════════════════════════════════════ -->
     <script>
-        // *** PASTE FIREBASE CONFIG KAMU DI SINI ***
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
         const firebaseConfig = {
-            apiKey: "AIzaSyD_JUc2JQCt1NV4HEDvWxTQ0JsvsDD4TWw",
-            authDomain: "testing-be520.firebaseapp.com",
-            projectId: "testing-be520",
-            storageBucket: "testing-be520.firebasestorage.app",
-            messagingSenderId: "1:254941855476:web:a649fdbf1d14fab38c68a1",
-            appId: "G-MBJ8GH0JLC"
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        const firebaseConfig = {
+        apiKey: "AIzaSyD3mr-mgHYRSP5xkJB0I8Td0Lk8cRJnPZk",
+        authDomain: "testingadah.firebaseapp.com",
+        projectId: "testingadah",
+        storageBucket: "testingadah.firebasestorage.app",
+        messagingSenderId: "660724116760",
+        appId: "1:660724116760:web:7b066cff70c43f1a0a026d",
+        measurementId: "G-ZB6MMG5HF2"
         };
 
         // ─── Cek apakah config sudah diisi ───────────────────────
@@ -341,7 +344,7 @@
 
         // ─── Isi dropdown Tahun ───────────────────────────────────
         const currentYear = new Date().getFullYear();
-        for (let y = currentYear; y >= currentYear - 5; y--) {
+        for (let y = currentYear; y >= currentYear - 10; y--) {
             const opt = document.createElement('option');
             opt.value = y;
             opt.textContent = y;
