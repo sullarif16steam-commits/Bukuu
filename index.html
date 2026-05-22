@@ -286,15 +286,13 @@
     <script>
         // For Firebase JS SDK v7.20.0 and later, measurementId is optional
         const firebaseConfig = {
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-        const firebaseConfig = {
-        apiKey: "AIzaSyD3mr-mgHYRSP5xkJB0I8Td0Lk8cRJnPZk",
-        authDomain: "testingadah.firebaseapp.com",
-        projectId: "testingadah",
-        storageBucket: "testingadah.firebasestorage.app",
-        messagingSenderId: "660724116760",
-        appId: "1:660724116760:web:7b066cff70c43f1a0a026d",
-        measurementId: "G-ZB6MMG5HF2"
+            apiKey: "AIzaSyD3mr-mgHYRSP5xkJB0I8Td0Lk8cRJnPZk",
+            authDomain: "testingadah.firebaseapp.com",
+            projectId: "testingadah",
+            storageBucket: "testingadah.firebasestorage.app",
+            messagingSenderId: "660724116760",
+            appId: "1:660724116760:web:7b066cff70c43f1a0a026d",
+            measurementId: "G-ZB6MMG5HF2"
         };
 
         // ─── Cek apakah config sudah diisi ───────────────────────
@@ -308,34 +306,34 @@
         }
 
         const db = isConfigured ? firebase.firestore() : null;
-        const COLLECTION = 'transactions';
+            const COLLECTION = 'transactions';
 
-        // ─── DOM Elements ─────────────────────────────────────────
-        const balance = document.getElementById('balance');
-        const money_plus = document.getElementById('money-plus');
-        const money_minus = document.getElementById('money-minus');
-        const list = document.getElementById('list');
-        const form = document.getElementById('form');
-        const text = document.getElementById('text');
-        const amount = document.getElementById('amount');
-        const type = document.getElementById('type');
-        const transDay = document.getElementById('trans-day');
-        const transMonth = document.getElementById('trans-month');
-        const transYear = document.getElementById('trans-year');
-        const emptyState = document.getElementById('empty-state');
-        const monthlySummary = document.getElementById('monthly-summary');
-        const monthlyEmpty = document.getElementById('monthly-empty');
-        const syncIcon = document.getElementById('sync-icon');
-        const syncText = document.getElementById('sync-text');
-        const syncStatus = document.getElementById('sync-status');
-        const submitBtn = document.getElementById('submit-btn');
-        const submitLabel = document.getElementById('submit-label');
+            // ─── DOM Elements ─────────────────────────────────────────
+            const balance = document.getElementById('balance');
+            const money_plus = document.getElementById('money-plus');
+            const money_minus = document.getElementById('money-minus');
+            const list = document.getElementById('list');
+            const form = document.getElementById('form');
+            const text = document.getElementById('text');
+            const amount = document.getElementById('amount');
+            const type = document.getElementById('type');
+            const transDay = document.getElementById('trans-day');
+            const transMonth = document.getElementById('trans-month');
+            const transYear = document.getElementById('trans-year');
+            const emptyState = document.getElementById('empty-state');
+            const monthlySummary = document.getElementById('monthly-summary');
+            const monthlyEmpty = document.getElementById('monthly-empty');
+            const syncIcon = document.getElementById('sync-icon');
+            const syncText = document.getElementById('sync-text');
+            const syncStatus = document.getElementById('sync-status');
+            const submitBtn = document.getElementById('submit-btn');
+            const submitLabel = document.getElementById('submit-label');
 
-        // ─── In-memory cache (diisi dari Firestore listener) ──────
-        let transactions = [];
+            // ─── In-memory cache (diisi dari Firestore listener) ──────
+            let transactions =[];
 
-        // ─── Isi dropdown Hari (1-31) ─────────────────────────────
-        for (let d = 1; d <= 31; d++) {
+            // ─── Isi dropdown Hari (1-31) ─────────────────────────────
+            for(let d = 1; d <= 31; d++) {
             const opt = document.createElement('option');
             opt.value = String(d).padStart(2, '0');
             opt.textContent = d;
